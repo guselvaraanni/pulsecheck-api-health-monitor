@@ -1,21 +1,29 @@
 # PulseCheck — API & Service Health Monitor
 
-> Status: **Stage 1 — Spring Boot project initialized.** `GET /api/ping` is available.
+> Status: **Stage 2 — PostgreSQL and `MonitoredService` entity configured.**
 > This document describes the planned design and will be expanded as stages are completed.
 
 ## Quick Start
 
-Requirements: Java 21. Maven does not need to be installed — the Maven Wrapper downloads it.
+Requirements: Java 21 and PostgreSQL. Maven does not need to be installed — the Maven Wrapper downloads it.
 
-```bash
-# Windows
-.\mvnw.cmd spring-boot:run
+1. Create the database:
+   ```sql
+   CREATE DATABASE pulsecheck;
+   ```
+2. Copy `.env.example` to `.env` and set your PostgreSQL credentials. `.env` is git-ignored.
+3. Run the application:
+   ```bash
+   # Windows
+   .\mvnw.cmd spring-boot:run
 
-# macOS / Linux
-./mvnw spring-boot:run
-```
+   # macOS / Linux
+   ./mvnw spring-boot:run
+   ```
+4. Open `http://localhost:8080/api/ping`.
 
-Then open `http://localhost:8080/api/ping`.
+Tables are created automatically by Hibernate on startup. Run tests with `.\mvnw.cmd verify`
+(tests use the same database and roll back their changes).
 
 ## 1. Overview
 
