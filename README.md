@@ -1,7 +1,21 @@
 # PulseCheck — API & Service Health Monitor
 
-> Status: **Stage 0 — architecture defined.** No application code yet.
+> Status: **Stage 1 — Spring Boot project initialized.** `GET /api/ping` is available.
 > This document describes the planned design and will be expanded as stages are completed.
+
+## Quick Start
+
+Requirements: Java 21. Maven does not need to be installed — the Maven Wrapper downloads it.
+
+```bash
+# Windows
+.\mvnw.cmd spring-boot:run
+
+# macOS / Linux
+./mvnw spring-boot:run
+```
+
+Then open `http://localhost:8080/api/ping`.
 
 ## 1. Overview
 
@@ -27,7 +41,7 @@ PulseCheck answers these questions with a small, understandable monolith.
 | Area | Technology |
 |---|---|
 | Language | Java 21 |
-| Framework | Spring Boot 3, Spring MVC |
+| Framework | Spring Boot 4, Spring MVC |
 | Persistence | Spring Data JPA, Hibernate |
 | Database | PostgreSQL |
 | HTTP checks | `java.net.http.HttpClient` (built into the JDK) |
