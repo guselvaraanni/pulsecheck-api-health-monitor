@@ -1,6 +1,6 @@
 # PulseCheck — API & Service Health Monitor
 
-> Status: **Stage 2 — PostgreSQL and `MonitoredService` entity configured.**
+> Status: **Stage 3 — Service management REST APIs (`/api/services`) implemented.**
 > This document describes the planned design and will be expanded as stages are completed.
 
 ## Quick Start
@@ -20,7 +20,7 @@ Requirements: Java 21 and PostgreSQL. Maven does not need to be installed — th
    # macOS / Linux
    ./mvnw spring-boot:run
    ```
-4. Open `http://localhost:8080/api/ping`.
+4. Open `http://localhost:8080/api/ping` (or the `SERVER_PORT` set in `.env`).
 
 Tables are created automatically by Hibernate on startup. Run tests with `.\mvnw.cmd verify`
 (tests use the same database and roll back their changes).
