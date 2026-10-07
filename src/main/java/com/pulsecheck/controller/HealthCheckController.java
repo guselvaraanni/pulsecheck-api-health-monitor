@@ -6,10 +6,13 @@ import com.pulsecheck.dto.ServiceHealthResponse;
 import com.pulsecheck.service.HealthCheckService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -22,6 +25,13 @@ public class HealthCheckController {
 
     public HealthCheckController(HealthCheckService healthCheckService) {
         this.healthCheckService = healthCheckService;
+    }
+
+    // A DOWN result is still a successful API call: the check ran and was recorded.
+    @PostMapping("/checks")
+    @ResponseStatus(HttpStatus.CREATED)
+    public HealthCheckResponse runCheck(@PathVariable Long serviceId) {
+        return healthCheckService.runCheck(serviceId);
     }
 
     @GetMapping("/checks")

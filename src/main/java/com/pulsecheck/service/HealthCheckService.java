@@ -3,6 +3,7 @@ package com.pulsecheck.service;
 import com.pulsecheck.dto.HealthCheckResponse;
 import com.pulsecheck.dto.PageResponse;
 import com.pulsecheck.dto.ServiceHealthResponse;
+import com.pulsecheck.entity.HealthCheck;
 import com.pulsecheck.entity.MonitoredService;
 import com.pulsecheck.exception.ServiceNotFoundException;
 import com.pulsecheck.repository.HealthCheckRepository;
@@ -19,11 +20,33 @@ public class HealthCheckService {
 
     private final HealthCheckRepository healthCheckRepository;
     private final MonitoredServiceRepository monitoredServiceRepository;
+    private final HttpHealthChecker httpHealthChecker;
 
     public HealthCheckService(HealthCheckRepository healthCheckRepository,
-                              MonitoredServiceRepository monitoredServiceRepository) {
+                              MonitoredServiceRepository monitoredServiceRepository,
+                              HttpHealthChecker httpHealthChecker) {
         this.healthCheckRepository = healthCheckRepository;
         this.monitoredServiceRepository = monitoredServiceRepository;
+        this.httpHealthChecker = httpHealthChecker;
+    }
+
+    /**
+     * Checks a service now, regardless of its active flag, and stores the result.
+     * The HTTP call happens before any database write, so a slow service never holds a DB connection.
+     */
+    public HealthCheckResponse runCheck(Long serviceId) {
+        MonitoredService service = monitoredServiceRepository.findById(serviceId)
+                .orElseThrow(() -> new ServiceNotFoundException(serviceId));
+
+        CheckResult result = httpHealthChecker.check(service.getUrl());
+
+        HealthCheck saved = healthCheckRepository.save(new HealthCheck(
+                service,
+                result.status(),
+                result.responseTimeMs(),
+                result.checkedAt(),
+                result.errorMessage()));
+        return HealthCheckResponse.from(saved);
     }
 
     public PageResponse<HealthCheckResponse> getHistory(Long serviceId, int page, int size) {

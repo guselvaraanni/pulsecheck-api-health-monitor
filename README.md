@@ -1,6 +1,6 @@
 # PulseCheck — API & Service Health Monitor
 
-> Status: **Stage 5 — Health check history APIs implemented.**
+> Status: **Stage 6 — Real HTTP health checks implemented (`POST /api/services/{id}/checks`).**
 > This document describes the planned design and will be expanded as stages are completed.
 
 ## Quick Start
