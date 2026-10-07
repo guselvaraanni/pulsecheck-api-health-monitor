@@ -3,10 +3,10 @@ package com.pulsecheck.service;
 import com.pulsecheck.dto.ServiceRequest;
 import com.pulsecheck.dto.ServiceResponse;
 import com.pulsecheck.entity.MonitoredService;
+import com.pulsecheck.exception.DuplicateServiceException;
+import com.pulsecheck.exception.ServiceNotFoundException;
 import com.pulsecheck.repository.MonitoredServiceRepository;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -21,8 +21,7 @@ public class MonitoredServiceService {
 
     public ServiceResponse create(ServiceRequest request) {
         if (repository.existsByNameIgnoreCase(request.name())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Service with name '" + request.name() + "' already exists");
+            throw new DuplicateServiceException(request.name());
         }
 
         MonitoredService service = new MonitoredService(request.name(), request.url(), request.description());
@@ -46,8 +45,7 @@ public class MonitoredServiceService {
         MonitoredService service = getExisting(id);
 
         if (repository.existsByNameIgnoreCaseAndIdNot(request.name(), id)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Service with name '" + request.name() + "' already exists");
+            throw new DuplicateServiceException(request.name());
         }
 
         service.setName(request.name());
@@ -65,7 +63,6 @@ public class MonitoredServiceService {
 
     private MonitoredService getExisting(Long id) {
         return repository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Service with id " + id + " not found"));
+                .orElseThrow(() -> new ServiceNotFoundException(id));
     }
 }

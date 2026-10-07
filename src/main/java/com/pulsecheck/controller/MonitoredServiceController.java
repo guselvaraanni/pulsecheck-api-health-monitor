@@ -3,6 +3,7 @@ package com.pulsecheck.controller;
 import com.pulsecheck.dto.ServiceRequest;
 import com.pulsecheck.dto.ServiceResponse;
 import com.pulsecheck.service.MonitoredServiceService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,7 +28,7 @@ public class MonitoredServiceController {
     }
 
     @PostMapping
-    public ResponseEntity<ServiceResponse> create(@RequestBody ServiceRequest request) {
+    public ResponseEntity<ServiceResponse> create(@Valid @RequestBody ServiceRequest request) {
         ServiceResponse created = monitoredServiceService.create(request);
         return ResponseEntity
                 .created(URI.create("/api/services/" + created.id()))
@@ -45,7 +46,7 @@ public class MonitoredServiceController {
     }
 
     @PutMapping("/{id}")
-    public ServiceResponse update(@PathVariable Long id, @RequestBody ServiceRequest request) {
+    public ServiceResponse update(@PathVariable Long id, @Valid @RequestBody ServiceRequest request) {
         return monitoredServiceService.update(id, request);
     }
 
