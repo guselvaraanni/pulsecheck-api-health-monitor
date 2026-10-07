@@ -1,6 +1,6 @@
 # PulseCheck — API & Service Health Monitor
 
-> Status: **Stage 3 — Service management REST APIs (`/api/services`) implemented.**
+> Status: **Stage 5 — Health check history APIs implemented.**
 > This document describes the planned design and will be expanded as stages are completed.
 
 ## Quick Start
@@ -185,7 +185,8 @@ POST /api/services → Controller (@Valid DTO) → Service (duplicate check) →
 | | `DELETE /api/services/{id}` | delete a service |
 | Health checks | `POST /api/services/{id}/checks` | check one service now |
 | | `POST /api/checks/run` | check all active services concurrently |
-| | `GET /api/services/{id}/checks?limit=` | check history |
+| | `GET /api/services/{id}/checks?page=&size=` | paginated check history (newest first) |
+| | `GET /api/services/{id}/checks/recent?limit=` | most recent checks |
 | | `GET /api/services/{id}/health` | current health |
 | Incidents | `GET /api/incidents?open=true` | incidents across services |
 | | `GET /api/services/{id}/incidents` | incidents for one service |

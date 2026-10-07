@@ -5,10 +5,13 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "monitored_services")
@@ -32,6 +35,11 @@ public class MonitoredService {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    // Inverse side: mapped by HealthCheck.service, so this list adds no column to this table.
+    // Lazy by default; history is read through HealthCheckRepository with paging, not through this list.
+    @OneToMany(mappedBy = "service")
+    private List<HealthCheck> healthChecks = new ArrayList<>();
 
     // Required by JPA: Hibernate instantiates entities through a no-arg constructor.
     protected MonitoredService() {
@@ -86,5 +94,9 @@ public class MonitoredService {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public List<HealthCheck> getHealthChecks() {
+        return healthChecks;
     }
 }
