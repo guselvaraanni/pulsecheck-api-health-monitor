@@ -16,8 +16,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/api/services/{serviceId}")
 public class HealthCheckController {
@@ -41,13 +39,6 @@ public class HealthCheckController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         return healthCheckService.getHistory(serviceId, page, size);
-    }
-
-    @GetMapping("/checks/recent")
-    public List<HealthCheckResponse> getRecent(
-            @PathVariable Long serviceId,
-            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit) {
-        return healthCheckService.getRecent(serviceId, limit);
     }
 
     @GetMapping("/checks/summary")

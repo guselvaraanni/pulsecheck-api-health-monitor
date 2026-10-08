@@ -1,6 +1,6 @@
 # PulseCheck — API & Service Health Monitor
 
-> Status: **Stage 11 — Scheduled monitoring.**
+> Status: **Stage 12 — API cleanup and Postman collection.**
 > This document describes the planned design and will be expanded as stages are completed.
 
 ## Quick Start
@@ -185,7 +185,7 @@ Configured in `application.properties`:
 | `pulsecheck.monitoring.interval` | `30s` | pause between the end of one run and the start of the next (min `1s`) |
 | `pulsecheck.monitoring.initial-delay` | `10s` | wait after startup before the first run |
 
-## 7. Planned API
+## 7. API
 
 | Category | Method & Path | Purpose |
 |---|---|---|
@@ -198,7 +198,6 @@ Configured in `application.properties`:
 | Health checks | `POST /api/services/{id}/checks` | check one service now |
 | | `POST /api/checks/run` | check all active services concurrently (`409` if a run is already in progress) |
 | | `GET /api/services/{id}/checks?page=&size=` | paginated check history (newest first) |
-| | `GET /api/services/{id}/checks/recent?limit=` | most recent checks |
 | | `GET /api/services/{id}/checks/summary?limit=` | status counts, failure streak, top errors over recent checks |
 | | `GET /api/services/{id}/health` | current health |
 | Incidents | `GET /api/incidents?open=&page=&size=` | incidents across services (`open=true` for ongoing only) |
@@ -206,7 +205,38 @@ Configured in `application.properties`:
 | Metrics | `GET /api/services/{id}/metrics?hours=` | availability, failures, average response time (1–168 h window) |
 | | `GET /api/metrics?hours=` | metrics for all services, worst availability first |
 
-Errors will use one consistent JSON structure (defined in Stage 4).
+Status codes: `200` read/update/run-all, `201` created (service or recorded check), `204` deleted,
+`400` invalid input, `404` unknown service or path, `405` wrong method, `409` duplicate name or run
+already in progress, `500` unexpected error.
+
+Every error uses the same JSON structure:
+
+```json
+{
+  "timestamp": "2026-10-08T07:14:53.605Z",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Validation failed",
+  "path": "/api/services",
+  "fieldErrors": { "name": "Name is required" }
+}
+```
+
+### Postman collection
+
+`postman/PulseCheck.postman_collection.json` tests every endpoint: success cases, validation errors,
+not-found cases, failing services (connection refused, HTTP 500), concurrent run-all, incidents and metrics.
+It creates its own services and deletes them at the end, so it can be run repeatedly.
+
+1. Postman → **Import** → select the file.
+2. Set the collection variable `baseUrl` (default `http://localhost:8080`).
+3. Run the collection in order with the **Collection Runner** (needs internet for example.com and httpbin.org).
+
+From the command line (Postman's CLI runner, requires Node.js):
+
+```bash
+npx newman run postman/PulseCheck.postman_collection.json --env-var baseUrl=http://localhost:8080
+```
 
 ## 8. Role of the Database
 

@@ -109,13 +109,6 @@ public class HealthCheckService {
                         .map(HealthCheckResponse::from));
     }
 
-    public List<HealthCheckResponse> getRecent(Long serviceId, int limit) {
-        ensureServiceExists(serviceId);
-        return healthCheckRepository.findByServiceIdOrderByCheckedAtDesc(serviceId, Limit.of(limit)).stream()
-                .map(HealthCheckResponse::from)
-                .toList();
-    }
-
     public CheckSummaryResponse getSummary(Long serviceId, int limit) {
         MonitoredService service = monitoredServiceRepository.findById(serviceId)
                 .orElseThrow(() -> new ServiceNotFoundException(serviceId));

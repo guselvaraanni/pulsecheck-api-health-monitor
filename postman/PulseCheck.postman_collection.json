@@ -1,0 +1,849 @@
+{
+  "info": {
+    "name": "PulseCheck API",
+    "description": "End-to-end tests for PulseCheck. Run the whole collection in order (Collection Runner or Newman).\n\nSet `baseUrl` to the address of your running app (default http://localhost:8080). The collection creates its own services (names end with a unique run id) and deletes them in the Cleanup folder.\n\nNeeds internet access: it checks example.com and httpbin.org.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "runId", "value": "" },
+    { "key": "upServiceId", "value": "" },
+    { "key": "refusedServiceId", "value": "" },
+    { "key": "errorServiceId", "value": "" },
+    { "key": "createdIds", "value": "[]" },
+    { "key": "runAllRetries", "value": "0" },
+    { "key": "unknownId", "value": "999999999" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Every error response must use the same ApiError structure.",
+          "if (pm.response.code >= 400) {",
+          "    pm.test('Error body uses the ApiError format', function () {",
+          "        const body = pm.response.json();",
+          "        pm.expect(body.status).to.eql(pm.response.code);",
+          "        pm.expect(body.error).to.be.a('string');",
+          "        pm.expect(body.message).to.be.a('string');",
+          "        pm.expect(body.path).to.match(/^\\/api/);",
+          "        pm.expect(body.timestamp).to.be.a('string');",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. System",
+      "item": [
+        {
+          "name": "Ping",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('runId', Date.now().toString());",
+                  "pm.collectionVariables.set('createdIds', '[]');",
+                  "pm.collectionVariables.set('runAllRetries', '0');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK and status UP', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/ping" }
+        },
+        {
+          "name": "Unknown endpoint returns 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('404 Not Found', function () { pm.response.to.have.status(404); });"]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/does-not-exist" }
+        }
+      ]
+    },
+    {
+      "name": "2. Services",
+      "item": [
+        {
+          "name": "Create healthy service",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Created with Location header', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.headers.get('Location')).to.eql('/api/services/' + body.id);",
+                  "});",
+                  "pm.test('New service is active by default', function () {",
+                  "    pm.expect(body.active).to.eql(true);",
+                  "    pm.expect(body.createdAt).to.be.a('string');",
+                  "});",
+                  "pm.collectionVariables.set('upServiceId', body.id);",
+                  "const ids = JSON.parse(pm.collectionVariables.get('createdIds'));",
+                  "ids.push(body.id);",
+                  "pm.collectionVariables.set('createdIds', JSON.stringify(ids));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"example-site-{{runId}}\",\n  \"url\": \"https://example.com\",\n  \"description\": \"Public test site, expected UP\"\n}"
+            },
+            "url": "{{baseUrl}}/api/services"
+          }
+        },
+        {
+          "name": "Create unreachable service",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const id = pm.response.json().id;",
+                  "pm.collectionVariables.set('refusedServiceId', id);",
+                  "const ids = JSON.parse(pm.collectionVariables.get('createdIds'));",
+                  "ids.push(id);",
+                  "pm.collectionVariables.set('createdIds', JSON.stringify(ids));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"refused-port-{{runId}}\",\n  \"url\": \"http://localhost:1\",\n  \"description\": \"Nothing listens on port 1, expected DOWN (connection refused)\"\n}"
+            },
+            "url": "{{baseUrl}}/api/services"
+          }
+        },
+        {
+          "name": "Create service returning HTTP 500",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const id = pm.response.json().id;",
+                  "pm.collectionVariables.set('errorServiceId', id);",
+                  "const ids = JSON.parse(pm.collectionVariables.get('createdIds'));",
+                  "ids.push(id);",
+                  "pm.collectionVariables.set('createdIds', JSON.stringify(ids));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"server-error-{{runId}}\",\n  \"url\": \"https://httpbin.org/status/500\",\n  \"description\": \"Always answers 500, expected DOWN\"\n}"
+            },
+            "url": "{{baseUrl}}/api/services"
+          }
+        },
+        {
+          "name": "Create slow services (for concurrency test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
+                  "const ids = JSON.parse(pm.collectionVariables.get('createdIds'));",
+                  "ids.push(pm.response.json().id);",
+                  "pm.collectionVariables.set('createdIds', JSON.stringify(ids));",
+                  "// Repeat this request until three slow services exist (3 earlier services + 3 slow = 6).",
+                  "if (ids.length < 6) { pm.execution.setNextRequest(pm.info.requestName); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"slow-{{$randomUUID}}-{{runId}}\",\n  \"url\": \"https://httpbin.org/delay/1\",\n  \"description\": \"Takes about 1 second to answer\"\n}"
+            },
+            "url": "{{baseUrl}}/api/services"
+          }
+        },
+        {
+          "name": "Duplicate name returns 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict (names are compared case-insensitively)', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"EXAMPLE-SITE-{{runId}}\",\n  \"url\": \"https://example.com\"\n}"
+            },
+            "url": "{{baseUrl}}/api/services"
+          }
+        },
+        {
+          "name": "Invalid body returns 400 with field errors",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 with an error per invalid field', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    const errors = pm.response.json().fieldErrors;",
+                  "    pm.expect(errors).to.have.property('name');",
+                  "    pm.expect(errors).to.have.property('url');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"\",\n  \"url\": \"ftp://example.com\"\n}" },
+            "url": "{{baseUrl}}/api/services"
+          }
+        },
+        {
+          "name": "Malformed JSON returns 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('400 Bad Request', function () { pm.response.to.have.status(400); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"name\": \"broken\", " },
+            "url": "{{baseUrl}}/api/services"
+          }
+        },
+        {
+          "name": "List services",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 and contains the created service', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const id = Number(pm.collectionVariables.get('upServiceId'));",
+                  "    pm.expect(pm.response.json().map(s => s.id)).to.include(id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services" }
+        },
+        {
+          "name": "Get service by id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 with the requested service', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get('upServiceId')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{upServiceId}}" }
+        },
+        {
+          "name": "Unknown service returns 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('404 Not Found', function () { pm.response.to.have.status(404); });"]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{unknownId}}" }
+        },
+        {
+          "name": "Non-numeric id returns 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('400 Bad Request', function () { pm.response.to.have.status(400); });"]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/abc" }
+        },
+        {
+          "name": "Update service",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 with updated description and unchanged active flag', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.description).to.eql('Updated by Postman');",
+                  "    pm.expect(body.active).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"example-site-{{runId}}\",\n  \"url\": \"https://example.com\",\n  \"description\": \"Updated by Postman\"\n}"
+            },
+            "url": "{{baseUrl}}/api/services/{{upServiceId}}"
+          }
+        },
+        {
+          "name": "Update unknown service returns 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('404 Not Found', function () { pm.response.to.have.status(404); });"]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"ghost-{{runId}}\",\n  \"url\": \"https://example.com\"\n}" },
+            "url": "{{baseUrl}}/api/services/{{unknownId}}"
+          }
+        },
+        {
+          "name": "Unsupported method returns 405",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('405 Method Not Allowed', function () { pm.response.to.have.status(405); });"]
+              }
+            }
+          ],
+          "request": { "method": "PATCH", "url": "{{baseUrl}}/api/services/{{upServiceId}}" }
+        }
+      ]
+    },
+    {
+      "name": "3. Health checks",
+      "item": [
+        {
+          "name": "Check healthy service (UP)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Created and UP with a response time', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(body.status).to.eql('UP');",
+                  "    pm.expect(body.responseTimeMs).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/services/{{upServiceId}}/checks" }
+        },
+        {
+          "name": "Check unreachable service (DOWN)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 Created: a DOWN result is still a recorded check', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(body.status).to.eql('DOWN');",
+                  "});",
+                  "pm.test('Has an error message and no response time', function () {",
+                  "    pm.expect(body.errorMessage).to.be.a('string').and.not.empty;",
+                  "    pm.expect(body.responseTimeMs).to.be.oneOf([null, undefined]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/services/{{refusedServiceId}}/checks" }
+        },
+        {
+          "name": "Check service returning HTTP 500 (DOWN)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('DOWN with error message HTTP 500', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(body.status).to.eql('DOWN');",
+                  "    pm.expect(body.errorMessage).to.eql('HTTP 500');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/services/{{errorServiceId}}/checks" }
+        },
+        {
+          "name": "Check unknown service returns 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('404 Not Found', function () { pm.response.to.have.status(404); });"]
+              }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/services/{{unknownId}}/checks" }
+        },
+        {
+          "name": "Run all active checks concurrently",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A scheduled run may be in progress (409). Retry a few times before failing.",
+                  "const retries = Number(pm.collectionVariables.get('runAllRetries'));",
+                  "if (pm.response.code === 409 && retries < 5) {",
+                  "    pm.collectionVariables.set('runAllRetries', String(retries + 1));",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "    setTimeout(function () {}, 2000);",
+                  "    return;",
+                  "}",
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "const ids = JSON.parse(pm.collectionVariables.get('createdIds'));",
+                  "pm.test('Every service created by this run was checked', function () {",
+                  "    const checked = body.results.map(r => r.serviceId);",
+                  "    ids.forEach(id => pm.expect(checked).to.include(id));",
+                  "});",
+                  "pm.test('Counts add up', function () {",
+                  "    pm.expect(body.upCount + body.downCount).to.eql(body.servicesChecked);",
+                  "    pm.expect(body.results.length).to.eql(body.servicesChecked);",
+                  "});",
+                  "pm.test('Checks ran in parallel: total time is less than the sum of individual times', function () {",
+                  "    const sum = body.results.reduce((total, r) => total + (r.responseTimeMs || 0), 0);",
+                  "    pm.expect(body.durationMs).to.be.below(sum);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/checks/run" }
+        },
+        {
+          "name": "Check history (paginated, newest first)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 with page metadata', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.page).to.eql(0);",
+                  "    pm.expect(body.size).to.eql(5);",
+                  "    pm.expect(body.totalElements).to.be.at.least(2);",
+                  "});",
+                  "pm.test('Newest check first', function () {",
+                  "    const times = body.content.map(c => Date.parse(c.checkedAt));",
+                  "    for (let i = 1; i < times.length; i++) { pm.expect(times[i - 1]).to.be.at.least(times[i]); }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{upServiceId}}/checks?page=0&size=5" }
+        },
+        {
+          "name": "Page size above limit returns 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 with a field error for size', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().fieldErrors).to.have.property('size');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{upServiceId}}/checks?size=101" }
+        },
+        {
+          "name": "Check summary of failing service",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 with failures counted', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.failureCount).to.be.at.least(2);",
+                  "    pm.expect(body.consecutiveFailures).to.be.at.least(2);",
+                  "    pm.expect(body.statusCounts.DOWN).to.be.at.least(2);",
+                  "    pm.expect(body.topErrors).to.not.be.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{refusedServiceId}}/checks/summary?limit=50" }
+        },
+        {
+          "name": "Current health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 and UP', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().status).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{upServiceId}}/health" }
+        }
+      ]
+    },
+    {
+      "name": "4. Incidents",
+      "item": [
+        {
+          "name": "Open incidents include the failing service",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 and only open incidents', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.response.json().content.forEach(i => pm.expect(i.open).to.eql(true));",
+                  "});",
+                  "pm.test('Failing service has an open incident', function () {",
+                  "    const id = Number(pm.collectionVariables.get('refusedServiceId'));",
+                  "    pm.expect(pm.response.json().content.map(i => i.serviceId)).to.include(id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/incidents?open=true&size=100" }
+        },
+        {
+          "name": "Incidents for failing service",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('Exactly one incident, still open, with a reason', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.totalElements).to.eql(1);",
+                  "    pm.expect(body.content[0].open).to.eql(true);",
+                  "    pm.expect(body.content[0].endedAt).to.be.oneOf([null, undefined]);",
+                  "    pm.expect(body.content[0].reason).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{refusedServiceId}}/incidents" }
+        },
+        {
+          "name": "Healthy service has no incidents",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 and empty', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().totalElements).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{upServiceId}}/incidents" }
+        },
+        {
+          "name": "Incidents for unknown service returns 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('404 Not Found', function () { pm.response.to.have.status(404); });"]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{unknownId}}/incidents" }
+        }
+      ]
+    },
+    {
+      "name": "5. Metrics",
+      "item": [
+        {
+          "name": "Metrics for healthy service",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 with 100% availability', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.totalChecks).to.be.at.least(2);",
+                  "    pm.expect(body.failedChecks).to.eql(0);",
+                  "    pm.expect(body.availabilityPercent).to.eql(100);",
+                  "    pm.expect(body.averageResponseTimeMs).to.be.a('number');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{upServiceId}}/metrics?hours=24" }
+        },
+        {
+          "name": "Metrics for failing service",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 with 0% availability and no average response time', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.successfulChecks).to.eql(0);",
+                  "    pm.expect(body.availabilityPercent).to.eql(0);",
+                  "    pm.expect(body.averageResponseTimeMs).to.be.oneOf([null, undefined]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{refusedServiceId}}/metrics" }
+        },
+        {
+          "name": "Hours outside 1-168 returns 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 with a field error for hours', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().fieldErrors).to.have.property('hours');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{upServiceId}}/metrics?hours=169" }
+        },
+        {
+          "name": "Metrics for unknown service returns 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('404 Not Found', function () { pm.response.to.have.status(404); });"]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{unknownId}}/metrics" }
+        },
+        {
+          "name": "Metrics overview",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 and includes every service', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.services.length).to.eql(body.totalServices);",
+                  "    const ids = body.services.map(s => s.serviceId);",
+                  "    JSON.parse(pm.collectionVariables.get('createdIds')).forEach(id => pm.expect(ids).to.include(id));",
+                  "});",
+                  "pm.test('Worst availability first, services without data last', function () {",
+                  "    const values = body.services.map(s => s.availabilityPercent);",
+                  "    const withData = values.filter(v => v !== null);",
+                  "    pm.expect(values.slice(0, withData.length)).to.eql(withData);",
+                  "    for (let i = 1; i < withData.length; i++) { pm.expect(withData[i - 1]).to.be.at.most(withData[i]); }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/metrics?hours=24" }
+        }
+      ]
+    },
+    {
+      "name": "6. Cleanup",
+      "item": [
+        {
+          "name": "Delete created services",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const ids = JSON.parse(pm.collectionVariables.get('createdIds'));",
+                  "pm.variables.set('deleteId', ids[0]);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', function () { pm.response.to.have.status(204); });",
+                  "// Loop over this request until every created service is deleted.",
+                  "const ids = JSON.parse(pm.collectionVariables.get('createdIds'));",
+                  "ids.shift();",
+                  "pm.collectionVariables.set('createdIds', JSON.stringify(ids));",
+                  "if (ids.length > 0) { pm.execution.setNextRequest(pm.info.requestName); }"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/services/{{deleteId}}" }
+        },
+        {
+          "name": "Deleted service returns 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('404 Not Found', function () { pm.response.to.have.status(404); });"]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/services/{{upServiceId}}" }
+        },
+        {
+          "name": "Deleting again returns 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('404 Not Found', function () { pm.response.to.have.status(404); });"]
+              }
+            }
+          ],
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/services/{{upServiceId}}" }
+        }
+      ]
+    }
+  ]
+}
