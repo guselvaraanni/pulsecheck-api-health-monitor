@@ -23,7 +23,7 @@ import static org.mockito.Mockito.doThrow;
  * the health check saved earlier in the same method is rolled back too.
  * Deliberately NOT @Transactional, so commits and rollbacks really happen.
  */
-@SpringBootTest
+@SpringBootTest(properties = "pulsecheck.monitoring.enabled=false")
 class CheckResultRecorderRollbackTest {
 
     @Autowired

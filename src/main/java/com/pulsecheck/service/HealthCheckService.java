@@ -9,6 +9,7 @@ import com.pulsecheck.dto.ServiceHealthResponse;
 import com.pulsecheck.entity.HealthCheck;
 import com.pulsecheck.entity.HealthStatus;
 import com.pulsecheck.entity.MonitoredService;
+import com.pulsecheck.exception.CheckRunInProgressException;
 import com.pulsecheck.exception.ServiceNotFoundException;
 import com.pulsecheck.repository.HealthCheckRepository;
 import com.pulsecheck.repository.MonitoredServiceRepository;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class HealthCheckService {
@@ -32,6 +34,9 @@ public class HealthCheckService {
     private final HttpHealthChecker httpHealthChecker;
     private final ParallelHealthChecker parallelHealthChecker;
     private final CheckResultRecorder checkResultRecorder;
+
+    // Shared by the scheduler thread and HTTP request threads, so it must be thread-safe.
+    private final AtomicBoolean runInProgress = new AtomicBoolean(false);
 
     public HealthCheckService(HealthCheckRepository healthCheckRepository,
                               MonitoredServiceRepository monitoredServiceRepository,
@@ -49,8 +54,25 @@ public class HealthCheckService {
      * Checks all active services concurrently, then records every result.
      * HTTP calls run on the health-check thread pool; database work stays on the calling thread,
      * with one transaction per service so a failure for one service does not undo the others.
+     * <p>
+     * Only one run may be in progress at a time (scheduled or manual), so two runs can never check
+     * the same service simultaneously and open duplicate incidents.
+     *
+     * @throws CheckRunInProgressException if another run has not finished yet
      */
     public CheckRunResponse runAllActiveChecks() {
+        // compareAndSet is atomic: exactly one thread can switch false -> true, all others fail immediately.
+        if (!runInProgress.compareAndSet(false, true)) {
+            throw new CheckRunInProgressException();
+        }
+        try {
+            return doRunAllActiveChecks();
+        } finally {
+            runInProgress.set(false);
+        }
+    }
+
+    private CheckRunResponse doRunAllActiveChecks() {
         long start = System.nanoTime();
 
         List<MonitoredService> services = monitoredServiceRepository.findByActiveTrue();

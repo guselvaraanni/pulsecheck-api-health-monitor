@@ -1,6 +1,6 @@
 # PulseCheck — API & Service Health Monitor
 
-> Status: **Stage 10 — Availability and failure metrics.**
+> Status: **Stage 11 — Scheduled monitoring.**
 > This document describes the planned design and will be expanded as stages are completed.
 
 ## Quick Start
@@ -173,6 +173,18 @@ POST /api/services → Controller (@Valid DTO) → Service (duplicate check) →
 5. Save the `HealthCheck` result.
 6. Update incidents based on the state transition table above.
 
+The scheduler starts a cycle automatically (`fixedDelay`: the interval is counted from the end of the
+previous run). Only one cycle runs at a time: a manual `POST /api/checks/run` during a scheduled run
+returns `409 Conflict`, and a scheduled run that finds a manual run in progress is skipped.
+
+Configured in `application.properties`:
+
+| Property | Default | Meaning |
+|---|---|---|
+| `pulsecheck.monitoring.enabled` | `true` | turn automatic monitoring on/off |
+| `pulsecheck.monitoring.interval` | `30s` | pause between the end of one run and the start of the next (min `1s`) |
+| `pulsecheck.monitoring.initial-delay` | `10s` | wait after startup before the first run |
+
 ## 7. Planned API
 
 | Category | Method & Path | Purpose |
@@ -184,7 +196,7 @@ POST /api/services → Controller (@Valid DTO) → Service (duplicate check) →
 | | `PUT /api/services/{id}` | update a service |
 | | `DELETE /api/services/{id}` | delete a service |
 | Health checks | `POST /api/services/{id}/checks` | check one service now |
-| | `POST /api/checks/run` | check all active services concurrently |
+| | `POST /api/checks/run` | check all active services concurrently (`409` if a run is already in progress) |
 | | `GET /api/services/{id}/checks?page=&size=` | paginated check history (newest first) |
 | | `GET /api/services/{id}/checks/recent?limit=` | most recent checks |
 | | `GET /api/services/{id}/checks/summary?limit=` | status counts, failure streak, top errors over recent checks |
