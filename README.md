@@ -1,6 +1,6 @@
 # PulseCheck — API & Service Health Monitor
 
-> Status: **Stage 9 — Incident tracking with transactional state transitions.**
+> Status: **Stage 10 — Availability and failure metrics.**
 > This document describes the planned design and will be expanded as stages are completed.
 
 ## Quick Start
@@ -191,8 +191,8 @@ POST /api/services → Controller (@Valid DTO) → Service (duplicate check) →
 | | `GET /api/services/{id}/health` | current health |
 | Incidents | `GET /api/incidents?open=&page=&size=` | incidents across services (`open=true` for ongoing only) |
 | | `GET /api/services/{id}/incidents?page=&size=` | incidents for one service |
-| Metrics | `GET /api/services/{id}/metrics` | availability metrics for one service |
-| | `GET /api/metrics` | metrics summary for all services |
+| Metrics | `GET /api/services/{id}/metrics?hours=` | availability, failures, average response time (1–168 h window) |
+| | `GET /api/metrics?hours=` | metrics for all services, worst availability first |
 
 Errors will use one consistent JSON structure (defined in Stage 4).
 
