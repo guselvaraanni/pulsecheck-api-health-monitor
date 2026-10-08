@@ -31,20 +31,24 @@ public class HealthCheckService {
     private final MonitoredServiceRepository monitoredServiceRepository;
     private final HttpHealthChecker httpHealthChecker;
     private final ParallelHealthChecker parallelHealthChecker;
+    private final CheckResultRecorder checkResultRecorder;
 
     public HealthCheckService(HealthCheckRepository healthCheckRepository,
                               MonitoredServiceRepository monitoredServiceRepository,
                               HttpHealthChecker httpHealthChecker,
-                              ParallelHealthChecker parallelHealthChecker) {
+                              ParallelHealthChecker parallelHealthChecker,
+                              CheckResultRecorder checkResultRecorder) {
         this.healthCheckRepository = healthCheckRepository;
         this.monitoredServiceRepository = monitoredServiceRepository;
         this.httpHealthChecker = httpHealthChecker;
         this.parallelHealthChecker = parallelHealthChecker;
+        this.checkResultRecorder = checkResultRecorder;
     }
 
     /**
-     * Checks all active services concurrently, then stores every result.
-     * HTTP calls run on the health-check thread pool; database work stays on the calling thread.
+     * Checks all active services concurrently, then records every result.
+     * HTTP calls run on the health-check thread pool; database work stays on the calling thread,
+     * with one transaction per service so a failure for one service does not undo the others.
      */
     public CheckRunResponse runAllActiveChecks() {
         long start = System.nanoTime();
@@ -52,10 +56,8 @@ public class HealthCheckService {
         List<MonitoredService> services = monitoredServiceRepository.findByActiveTrue();
         Map<MonitoredService, CheckResult> results = parallelHealthChecker.checkAll(services, MonitoredService::getUrl);
 
-        List<HealthCheck> checks = results.entrySet().stream()
-                .map(entry -> toEntity(entry.getKey(), entry.getValue()))
-                .toList();
-        List<CheckRunItem> items = healthCheckRepository.saveAll(checks).stream()
+        List<CheckRunItem> items = results.entrySet().stream()
+                .map(entry -> checkResultRecorder.record(entry.getKey(), entry.getValue()))
                 .map(CheckRunItem::from)
                 .toList();
 
@@ -65,8 +67,8 @@ public class HealthCheckService {
     }
 
     /**
-     * Checks a service now, regardless of its active flag, and stores the result.
-     * The HTTP call happens before any database write, so a slow service never holds a DB connection.
+     * Checks a service now, regardless of its active flag, and records the result.
+     * The HTTP call happens before the transaction starts, so a slow service never holds a DB connection.
      */
     public HealthCheckResponse runCheck(Long serviceId) {
         MonitoredService service = monitoredServiceRepository.findById(serviceId)
@@ -74,8 +76,7 @@ public class HealthCheckService {
 
         CheckResult result = httpHealthChecker.check(service.getUrl());
 
-        HealthCheck saved = healthCheckRepository.save(toEntity(service, result));
-        return HealthCheckResponse.from(saved);
+        return HealthCheckResponse.from(checkResultRecorder.record(service, result));
     }
 
     public PageResponse<HealthCheckResponse> getHistory(Long serviceId, int page, int size) {
@@ -133,11 +134,6 @@ public class HealthCheckService {
         if (!monitoredServiceRepository.existsById(serviceId)) {
             throw new ServiceNotFoundException(serviceId);
         }
-    }
-
-    private static HealthCheck toEntity(MonitoredService service, CheckResult result) {
-        return new HealthCheck(service, result.status(), result.responseTimeMs(), result.checkedAt(),
-                result.errorMessage());
     }
 
     private static Long toNullable(OptionalLong value) {
