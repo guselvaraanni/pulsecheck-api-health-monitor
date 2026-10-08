@@ -1,5 +1,6 @@
 package com.pulsecheck.controller;
 
+import com.pulsecheck.dto.CheckSummaryResponse;
 import com.pulsecheck.dto.HealthCheckResponse;
 import com.pulsecheck.dto.PageResponse;
 import com.pulsecheck.dto.ServiceHealthResponse;
@@ -47,6 +48,13 @@ public class HealthCheckController {
             @PathVariable Long serviceId,
             @RequestParam(defaultValue = "10") @Min(1) @Max(100) int limit) {
         return healthCheckService.getRecent(serviceId, limit);
+    }
+
+    @GetMapping("/checks/summary")
+    public CheckSummaryResponse getSummary(
+            @PathVariable Long serviceId,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(500) int limit) {
+        return healthCheckService.getSummary(serviceId, limit);
     }
 
     @GetMapping("/health")

@@ -1,5 +1,6 @@
 package com.pulsecheck.service;
 
+import com.pulsecheck.dto.CheckSummaryResponse;
 import com.pulsecheck.dto.HealthCheckResponse;
 import com.pulsecheck.dto.PageResponse;
 import com.pulsecheck.dto.ServiceHealthResponse;
@@ -14,9 +15,12 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.OptionalLong;
 
 @Service
 public class HealthCheckService {
+
+    private static final int TOP_ERRORS_LIMIT = 5;
 
     private final HealthCheckRepository healthCheckRepository;
     private final MonitoredServiceRepository monitoredServiceRepository;
@@ -64,6 +68,26 @@ public class HealthCheckService {
                 .toList();
     }
 
+    public CheckSummaryResponse getSummary(Long serviceId, int limit) {
+        MonitoredService service = monitoredServiceRepository.findById(serviceId)
+                .orElseThrow(() -> new ServiceNotFoundException(serviceId));
+
+        List<HealthCheck> checks =
+                healthCheckRepository.findByServiceIdOrderByCheckedAtDesc(serviceId, Limit.of(limit));
+
+        return new CheckSummaryResponse(
+                service.getId(),
+                service.getName(),
+                checks.size(),
+                HealthCheckAnalyzer.countByStatus(checks),
+                HealthCheckAnalyzer.countFailures(checks),
+                HealthCheckAnalyzer.consecutiveFailures(checks),
+                toNullable(HealthCheckAnalyzer.fastestResponseMs(checks)),
+                toNullable(HealthCheckAnalyzer.slowestResponseMs(checks)),
+                HealthCheckAnalyzer.lastFailureAt(checks).orElse(null),
+                HealthCheckAnalyzer.topErrors(checks, TOP_ERRORS_LIMIT));
+    }
+
     public ServiceHealthResponse getCurrentHealth(Long serviceId) {
         MonitoredService service = monitoredServiceRepository.findById(serviceId)
                 .orElseThrow(() -> new ServiceNotFoundException(serviceId));
@@ -84,5 +108,9 @@ public class HealthCheckService {
         if (!monitoredServiceRepository.existsById(serviceId)) {
             throw new ServiceNotFoundException(serviceId);
         }
+    }
+
+    private static Long toNullable(OptionalLong value) {
+        return value.isPresent() ? value.getAsLong() : null;
     }
 }

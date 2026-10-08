@@ -1,6 +1,6 @@
 # PulseCheck — API & Service Health Monitor
 
-> Status: **Stage 6 — Real HTTP health checks implemented (`POST /api/services/{id}/checks`).**
+> Status: **Stage 7 — Recent-check summary built with Java Streams.**
 > This document describes the planned design and will be expanded as stages are completed.
 
 ## Quick Start
@@ -187,6 +187,7 @@ POST /api/services → Controller (@Valid DTO) → Service (duplicate check) →
 | | `POST /api/checks/run` | check all active services concurrently |
 | | `GET /api/services/{id}/checks?page=&size=` | paginated check history (newest first) |
 | | `GET /api/services/{id}/checks/recent?limit=` | most recent checks |
+| | `GET /api/services/{id}/checks/summary?limit=` | status counts, failure streak, top errors over recent checks |
 | | `GET /api/services/{id}/health` | current health |
 | Incidents | `GET /api/incidents?open=true` | incidents across services |
 | | `GET /api/services/{id}/incidents` | incidents for one service |
