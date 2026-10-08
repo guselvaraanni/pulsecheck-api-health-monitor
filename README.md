@@ -1,6 +1,6 @@
 # PulseCheck — API & Service Health Monitor
 
-> Status: **Stage 7 — Recent-check summary built with Java Streams.**
+> Status: **Stage 8 — Concurrent health checks on a fixed thread pool (`POST /api/checks/run`).**
 > This document describes the planned design and will be expanded as stages are completed.
 
 ## Quick Start

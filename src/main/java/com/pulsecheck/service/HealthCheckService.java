@@ -1,10 +1,13 @@
 package com.pulsecheck.service;
 
+import com.pulsecheck.dto.CheckRunItem;
+import com.pulsecheck.dto.CheckRunResponse;
 import com.pulsecheck.dto.CheckSummaryResponse;
 import com.pulsecheck.dto.HealthCheckResponse;
 import com.pulsecheck.dto.PageResponse;
 import com.pulsecheck.dto.ServiceHealthResponse;
 import com.pulsecheck.entity.HealthCheck;
+import com.pulsecheck.entity.HealthStatus;
 import com.pulsecheck.entity.MonitoredService;
 import com.pulsecheck.exception.ServiceNotFoundException;
 import com.pulsecheck.repository.HealthCheckRepository;
@@ -15,7 +18,9 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalLong;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class HealthCheckService {
@@ -25,13 +30,38 @@ public class HealthCheckService {
     private final HealthCheckRepository healthCheckRepository;
     private final MonitoredServiceRepository monitoredServiceRepository;
     private final HttpHealthChecker httpHealthChecker;
+    private final ParallelHealthChecker parallelHealthChecker;
 
     public HealthCheckService(HealthCheckRepository healthCheckRepository,
                               MonitoredServiceRepository monitoredServiceRepository,
-                              HttpHealthChecker httpHealthChecker) {
+                              HttpHealthChecker httpHealthChecker,
+                              ParallelHealthChecker parallelHealthChecker) {
         this.healthCheckRepository = healthCheckRepository;
         this.monitoredServiceRepository = monitoredServiceRepository;
         this.httpHealthChecker = httpHealthChecker;
+        this.parallelHealthChecker = parallelHealthChecker;
+    }
+
+    /**
+     * Checks all active services concurrently, then stores every result.
+     * HTTP calls run on the health-check thread pool; database work stays on the calling thread.
+     */
+    public CheckRunResponse runAllActiveChecks() {
+        long start = System.nanoTime();
+
+        List<MonitoredService> services = monitoredServiceRepository.findByActiveTrue();
+        Map<MonitoredService, CheckResult> results = parallelHealthChecker.checkAll(services, MonitoredService::getUrl);
+
+        List<HealthCheck> checks = results.entrySet().stream()
+                .map(entry -> toEntity(entry.getKey(), entry.getValue()))
+                .toList();
+        List<CheckRunItem> items = healthCheckRepository.saveAll(checks).stream()
+                .map(CheckRunItem::from)
+                .toList();
+
+        long upCount = items.stream().filter(item -> item.status() == HealthStatus.UP).count();
+        long durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        return new CheckRunResponse(items.size(), upCount, items.size() - upCount, durationMs, items);
     }
 
     /**
@@ -44,12 +74,7 @@ public class HealthCheckService {
 
         CheckResult result = httpHealthChecker.check(service.getUrl());
 
-        HealthCheck saved = healthCheckRepository.save(new HealthCheck(
-                service,
-                result.status(),
-                result.responseTimeMs(),
-                result.checkedAt(),
-                result.errorMessage()));
+        HealthCheck saved = healthCheckRepository.save(toEntity(service, result));
         return HealthCheckResponse.from(saved);
     }
 
@@ -108,6 +133,11 @@ public class HealthCheckService {
         if (!monitoredServiceRepository.existsById(serviceId)) {
             throw new ServiceNotFoundException(serviceId);
         }
+    }
+
+    private static HealthCheck toEntity(MonitoredService service, CheckResult result) {
+        return new HealthCheck(service, result.status(), result.responseTimeMs(), result.checkedAt(),
+                result.errorMessage());
     }
 
     private static Long toNullable(OptionalLong value) {
